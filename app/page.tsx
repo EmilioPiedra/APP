@@ -1,65 +1,115 @@
-import Image from "next/image";
+import { supabase } from '@/lib/supabaseClient';
+import ProductCard from '@/components/ProductCard';
+import SearchBar from '@/components/SearchBar';
 
-export default function Home() {
+// Función para obtener la campaña activa más reciente
+async function getActiveCampaign() {
+  const { data: campaign } = await supabase
+    .from('campaigns')
+    .select('*')
+    .eq('activa', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  if (!campaign) return null
+
+  // Si hay campaña, buscamos sus productos y sus precios especiales
+  const { data: items } = await supabase
+    .from('campaign_items')
+    .select(`
+      precio_oferta,
+      products ( * )
+    `)
+    .eq('campaign_id', campaign.id)
+
+  // Transformamos los datos para que parezcan productos normales pero con el precio cambiado
+  const campaignProducts = items?.map((item: any) => ({
+    ...item.products,
+    // Sobrescribimos el precio normal con el de oferta para visualización
+    precio_oferta: item.precio_oferta, 
+    en_oferta: true, // Forzamos la bandera de oferta
+    precio_original: item.products.precio // Guardamos el original para comparar
+  })) || []
+
+  return { info: campaign, products: campaignProducts }
+}
+
+// Función del catálogo normal (la de siempre)
+async function getCatalog(params: any) {
+  let query = supabase.from('products').select('*').eq('estado', true).order('created_at', { ascending: false });
+  // ... (Tus filtros de búsqueda que ya tenías van aquí)
+  if (params.q) query = query.ilike('nombre', `%${params.q}%`);
+  // ...
+  const { data } = await query;
+  return data || [];
+}
+
+export default async function Home({ searchParams }: any) {
+  const params = await searchParams;
+  
+  // 1. Cargar Campaña (Evento)
+  const campaign = !params.q ? await getActiveCampaign() : null; // Solo mostramos campaña si no están buscando algo específico
+  
+  // 2. Cargar Catálogo Normal
+  const catalogProducts = await getCatalog(params);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="min-h-screen bg-gray-50 pb-20">
+      <header className="bg-white shadow-sm sticky top-0 z-10 px-4 py-4 flex justify-between items-center">
+        <h1 className="text-2xl font-bold text-blue-600">AgroGonzanamá</h1>
+      </header>
+
+      {/* Hero y Buscador */}
+      <div className="bg-blue-600 py-10 px-4 shadow-lg mb-8">
+        <div className="max-w-4xl mx-auto text-center">
+            <SearchBar />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 space-y-12">
+        
+        {/* 🔥 SECCIÓN DE EVENTO (SI EXISTE) 🔥 */}
+        {campaign && campaign.products.length > 0 && (
+            <section className="bg-white rounded-3xl shadow-2xl overflow-hidden border-2 border-orange-100">
+                {/* Banner del Evento */}
+                <div className="relative h-48 md:h-64 w-full bg-gray-900">
+                    <img src={campaign.info.banner_url} className="w-full h-full object-cover opacity-80" />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4">
+                        <span className="bg-red-600 text-white px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest mb-2 animate-pulse">
+                            Evento Activo
+                        </span>
+                        <h2 className="text-3xl md:text-5xl font-black text-white drop-shadow-lg">
+                            {campaign.info.titulo}
+                        </h2>
+                    </div>
+                </div>
+
+                {/* Grid de Productos del Evento */}
+                <div className="p-6 md:p-8 bg-gradient-to-b from-orange-50 to-white">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+                        {campaign.products.map((product: any) => (
+                             // Usamos una versión especial de Card o la misma pasándole props
+                            <ProductCard key={product.id} product={product} />
+                        ))}
+                    </div>
+                </div>
+            </section>
+        )}
+
+        {/* Catálogo Estándar */}
+        <section>
+            <h3 className="text-xl font-bold text-gray-800 mb-6 border-l-4 border-blue-600 pl-3">
+                Catálogo General
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+                {catalogProducts.map((product: any) => (
+                    <ProductCard key={product.id} product={product} />
+                ))}
+            </div>
+        </section>
+
+      </div>
+    </main>
   );
 }
