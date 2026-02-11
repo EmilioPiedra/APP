@@ -14,11 +14,11 @@ export default function NewProductPage() {
   const [descripcion, setDescripcion] = useState('')
   const [categoria, setCategoria] = useState('')
   const [file, setFile] = useState<File | null>(null)
-
+  const [listaCategorias, setListaCategorias] = useState<any[]>([])
   // 👇 DATOS DE PROMOCIÓN
   const [enOferta, setEnOferta] = useState(false)
   const [precioOferta, setPrecioOferta] = useState('')
-
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -59,6 +59,7 @@ export default function NewProductPage() {
     }
   }
 
+  
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-lg border border-gray-100">
