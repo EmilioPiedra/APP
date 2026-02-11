@@ -9,5 +9,6 @@ export interface Product {
   imagenes: string[] | null;
   categoria: string | null;
   en_oferta?: boolean;
-  precio_oferta?: number | null; // Precio Nuevo (Ahora)
+  precio_oferta?: number | null;
+  precio_original?: number | null; // Útil para cálculos visuales
 }

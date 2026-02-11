@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function NewProductPage() {
   const router = useRouter()
@@ -61,6 +62,14 @@ export default function NewProductPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-lg border border-gray-100">
+        <div className="mb-6">
+        <Link 
+          href="/admin/" 
+          className="inline-flex items-center gap-2 text-gray-500 hover:text-gray-800 transition-colors font-medium"
+        >
+          <span>←</span> Volver al Inventario
+        </Link>
+        </div>
         <h1 className="text-2xl font-bold mb-6 text-gray-800">Nuevo Producto 📦</h1>
         
         <form onSubmit={handleSubmit} className="space-y-6">

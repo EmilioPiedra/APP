@@ -6,9 +6,9 @@ import { useAnalytics } from '@/hooks/useAnalytics'
 export default function SearchBar() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { trackEvent } = useAnalytics() // Hook de tracking
+  // Usamos sessionId del hook para no tener errores manuales
+  const { sessionId } = useAnalytics() 
 
-  // Estado inicial: leemos la URL por si ya hay filtros aplicados
   const [showFilters, setShowFilters] = useState(false)
   const [query, setQuery] = useState(searchParams.get('q') || '')
   const [category, setCategory] = useState(searchParams.get('cat') || 'Todas')
@@ -20,28 +20,28 @@ export default function SearchBar() {
     e.preventDefault()
     setSearching(true)
 
-    // 1. TRACKING: Registramos qué buscó el usuario
-    if (query) {
-       // Enviamos el evento 'search' a la base de datos (sin esperar respuesta)
+    // 1. TRACKING CORREGIDO ✅
+    if (query && sessionId) {
        fetch('/api/events', {
          method: 'POST', 
-         body: JSON.stringify({ type: 'search', query: query, session_id: localStorage.getItem('sid') })
+         // Ahora enviamos el sessionId correcto que nos da el hook
+         body: JSON.stringify({ type: 'search', query: query, session_id: sessionId })
        })
     }
 
-    // 2. Construir la nueva URL
+    // 2. Construir URL (Igual que antes)
     const params = new URLSearchParams()
     if (query) params.set('q', query)
     if (category !== 'Todas') params.set('cat', category)
     if (minPrice) params.set('min', minPrice)
     if (maxPrice) params.set('max', maxPrice)
 
-    // 3. Empujar la URL (Esto hará que la Home se recargue con los nuevos datos)
     router.push(`/?${params.toString()}`)
     setSearching(false)
   }
 
   return (
+    // ... (El resto de tu HTML/JSX se queda IGUAL, no lo cambies)
     <div className="w-full max-w-4xl mx-auto mb-8 relative z-50">
       <div className="bg-white p-3 rounded-2xl shadow-xl border border-gray-200">
         <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-3">
@@ -76,7 +76,7 @@ export default function SearchBar() {
             </div>
         </form>
 
-        {/* Panel Desplegable de Filtros */}
+        {/* Panel Desplegable de Filtros (Igual que antes) */}
         {showFilters && (
             <div className="mt-4 pt-4 border-t grid grid-cols-1 sm:grid-cols-3 gap-4 animate-in slide-in-from-top-2">
                 <div>
