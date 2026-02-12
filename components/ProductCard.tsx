@@ -5,9 +5,10 @@ import { useAnalytics } from '@/hooks/useAnalytics';
 
 interface ProductCardProps {
   product: Product;
+  storeSlug?: string; // Opcional: Si viene, el link es relativo a la tienda
 }
 
-export default function ProductCard({ product }: ProductCardProps) {
+export default function ProductCard({ product, storeSlug }: ProductCardProps) {
   const { trackEvent } = useAnalytics();
   const imagen = product.imagenes?.[0] || 'data:image/gif;base64,R0lGODlhAQABAIAAAMLCwgAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==';
 
@@ -20,9 +21,16 @@ export default function ProductCard({ product }: ProductCardProps) {
     ? Math.round(((product.precio - product.precio_oferta!) / product.precio) * 100) 
     : 0;
 
+  // 🔗 GENERAR LINK INTELIGENTE
+  // Si estamos en una tienda, mantenemos el contexto (/tienda/productos/producto)
+  // Si estamos en global, vamos directo el global (/productos/producto)
+  const href = storeSlug 
+    ? `/${storeSlug}/productos/${product.slug}`
+    : `/productos/${product.slug}`;
+
   return (
     <Link 
-        href={`/productos/${product.slug}`} 
+        href={href} 
         className="group block h-full relative"
         onClick={() => trackEvent('click', product.id)}
     >

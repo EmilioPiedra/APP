@@ -33,6 +33,7 @@ export default function MetricsPage() {
   useEffect(() => {
     // Definimos la función DENTRO del efecto para encapsularla y evitar bucles
     const loadStats = async () => {
+      console.time("⏱️ Dashboard Stats Calc") 
       console.log("⚡ FETCHING STATS...") // Chivato de seguridad: Debe salir 1 vez
 
       // A. Cargar Productos (Solo necesitamos ID y nombre)
@@ -84,6 +85,7 @@ export default function MetricsPage() {
           topSearches,
           topProducts
         })
+        console.timeEnd("⏱️ Dashboard Stats Calc")
       }
       setLoading(false)
     }

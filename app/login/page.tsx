@@ -15,7 +15,7 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
@@ -24,8 +24,23 @@ export default function LoginPage() {
       setError(error.message)
       setLoading(false)
     } else {
-      // Login exitoso -> vamos al admin
-      router.push('/admin')
+      // 3. Verificar Rol para redirección inteligente
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', data.user.id)
+        .single()
+
+      if (profile?.role === 'super-admin') {
+         router.push('/super-admin/tiendas')
+      } else if (profile?.role === 'customer') {
+         // Clientes van a la tienda, no al admin
+         router.push('/')
+      } else {
+         // Owners / Admins van al panel
+         router.push('/admin')
+      }
+      
       router.refresh()
     }
   }

@@ -25,35 +25,55 @@ export default function NewProductPage() {
 
     try {
       if (!file) throw new Error('Falta la imagen')
+
+      // 0. Obtener el User ID y su Tienda
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('No estás autenticado')
+
+      // Buscamos la tienda que le pertenece al usuario
+      const { data: store, error: storeError } = await supabase
+        .from('stores')
+        .select('id')
+        .eq('owner_id', user.id)
+        .single()
       
+      if (storeError || !store) throw new Error('No tienes una tienda asignada. Contacta al Super Admin.')
+
       // 1. Subir Imagen
       const fileExt = file.name.split('.').pop()
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
       const { error: uploadError } = await supabase.storage.from('product-images').upload(fileName, file)
-      if (uploadError) throw uploadError
+      if (uploadError) throw new Error('Error subiendo imagen: ' + uploadError.message)
+      
       const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(fileName)
 
-      // 2. Crear Slug
-      const slug = nombre.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '') + '-' + Date.now().toString().slice(-4)
+      // 2. Crear Slug Único
+      const baseSlug = nombre.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, '')
+      const uniqueSlug = `${baseSlug}-${Date.now().toString().slice(-4)}`
 
-      // 3. Guardar con Oferta
+      // 3. Guardar con Oferta y Store ID
       const { error: insertError } = await supabase
         .from('products')
         .insert([{
-          nombre, slug, descripcion, categoria,
+          nombre, 
+          slug: uniqueSlug, 
+          descripcion, 
+          categoria,
           precio: parseFloat(precio),
           imagenes: [publicUrl],
           estado: true,
-          // Guardamos los datos de oferta
+          store_id: store.id, // <--- VITAL: Asignar a la tienda del dueño
           en_oferta: enOferta,
           precio_oferta: enOferta ? parseFloat(precioOferta) : null
         }])
 
-      if (insertError) throw insertError
+      if (insertError) throw new Error(insertError.message)
+      
       router.push('/admin/productos') // Volver al inventario
 
     } catch (error: any) {
-      alert('Error: ' + error.message)
+      console.error(error)
+      alert(error.message)
     } finally {
       setLoading(false)
     }

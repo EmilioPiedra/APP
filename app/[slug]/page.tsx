@@ -1,41 +1,59 @@
 import { supabase } from '@/lib/supabaseClient';
 import ProductCard from '@/components/ProductCard';
 import SearchBar from '@/components/SearchBar';
+import { notFound } from 'next/navigation';
 
-// 1. Función para obtener la campaña activa (Banner gigante)
-async function getActiveCampaign() {
-  const { data: campaign } = await supabase
-    .from('campaigns')
-    .select('*')
-    .eq('activa', true)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
+// 1. Función para obtener la campaña activa
+async function getActiveCampaign(storeId: string) {
+  try {
+      // Intento de buscar campaña (puede fallar si no existe la tabla)
+      const { data: campaign, error } = await supabase
+        .from('campaigns')
+        .select('*')
+        .eq('activa', true)
+        // .eq('store_id', storeId) // Si las campañas son por tienda
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
 
-  if (!campaign) return null
+      if (error || !campaign) return null
 
-  const { data: items } = await supabase
-    .from('campaign_items')
-    .select(`
-      precio_oferta,
-      products ( * )
-    `)
-    .eq('campaign_id', campaign.id)
+      const { data: items } = await supabase
+        .from('campaign_items')
+        .select(`
+          precio_oferta,
+          products ( * )
+        `)
+        .eq('campaign_id', campaign.id)
 
-  const campaignProducts = items?.map((item: any) => ({
-    ...item.products,
-    precio_oferta: item.precio_oferta, 
-    en_oferta: true, 
-    precio_original: item.products.precio 
-  })) || []
+      const campaignProducts = items?.map((item: any) => {
+          if (!item.products) return null
+          // Verificar que el producto sea de esta tienda (por si acaso)
+          if (item.products.store_id !== storeId) return null
 
-  return { info: campaign, products: campaignProducts }
+          return {
+            ...item.products,
+            precio_oferta: item.precio_oferta, 
+            en_oferta: true, 
+            precio_original: item.products.precio 
+          }
+      }).filter(Boolean) || []
+
+      return { info: campaign, products: campaignProducts }
+  } catch (err) {
+      return null
+  }
 }
 
-// 2. Función del catálogo normal MEJORADA (Ahora detecta ofertas)
-async function getCatalog(params: any) {
-  // A. Pedimos productos
-  let query = supabase.from('products').select('*').eq('estado', true).order('created_at', { ascending: false });
+// 2. Función del catálogo normal
+async function getCatalog(params: any, storeId: string) {
+  // A. Pedimos productos DE ESTA TIENDA
+  let query = supabase
+    .from('products')
+    .select('*')
+    .eq('estado', true)
+    .eq('store_id', storeId) // <--- CRUCIAL: Filtrar por tienda
+    .order('created_at', { ascending: false });
   
   // Filtros
   if (params.q) query = query.ilike('nombre', `%${params.q}%`);
@@ -46,43 +64,67 @@ async function getCatalog(params: any) {
   const { data: products } = await query;
   if (!products) return [];
 
-  // B. 🔥 EL FIX: Pedimos las ofertas activas para cruzarlas
-  const { data: activeOffers } = await supabase
-    .from('campaign_items')
-    .select('product_id, precio_oferta, campaigns!inner(activa)')
-    .eq('campaigns.activa', true);
+  // B. Intentamos buscar ofertas
+  let productsWithOffers = products;
+  try {
+      const { data: activeOffers } = await supabase
+        .from('campaign_items')
+        .select('product_id, precio_oferta, campaigns!inner(activa)')
+        .eq('campaigns.activa', true);
 
-  // C. Mezclamos (Si el producto del catálogo está en oferta, le ponemos el precio nuevo)
-  const productsWithOffers = products.map((p: any) => {
-    const offer = activeOffers?.find((o: any) => o.product_id === p.id);
-    
-    if (offer) {
-      return {
-        ...p,
-        precio_oferta: offer.precio_oferta, // Precio rebajado
-        en_oferta: true,                    // Bandera activada
-        precio_original: p.precio           // Guardamos el original
-      };
-    }
-    return p; // Si no tiene oferta, se queda igual
-  });
+      if (activeOffers) {
+          productsWithOffers = products.map((p: any) => {
+            const offer = activeOffers.find((o: any) => o.product_id === p.id);
+            if (offer) {
+              return {
+                ...p,
+                precio_oferta: offer.precio_oferta,
+                en_oferta: true,
+                precio_original: p.precio
+              };
+            }
+            return p;
+          });
+      }
+  } catch (err) {
+      // Ignoramos error de ofertas si no hay tabla
+  }
 
   return productsWithOffers;
 }
 
-export default async function Home({ searchParams }: any) {
-  const params = await searchParams; // Next.js 15 await
+export default async function Home({ searchParams, params }: any) {
+  const resolvedParams = await params; // { slug: '...' }
+  const searchParamsResolved = await searchParams;
   
-  // Cargamos ambas cosas
-  const campaign = !params.q ? await getActiveCampaign() : null;
-  const catalogProducts = await getCatalog(params);
+  // 1. Validar Tienda
+  const { data: store, error } = await supabase
+    .from('stores')
+    .select('id, nombre, slug')
+    .eq('slug', resolvedParams.slug) // Buscamos por el slug de la URL
+    .single();
 
-  const isFiltering = params.q || (params.cat && params.cat !== 'Todas') || params.min;
+  if (error || !store) {
+      return (
+          <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
+              <h1 className="text-4xl font-bold text-gray-800 mb-2">Tienda No Encontrada 🏪</h1>
+              <p className="text-gray-500">La tienda "{resolvedParams.slug}" no existe o ha sido desactivada.</p>
+          </div>
+      )
+  }
+
+  // 2. Cargar catálogo de ESTA tienda
+  const campaign = !searchParamsResolved.q ? await getActiveCampaign(store.id) : null;
+  const catalogProducts = await getCatalog(searchParamsResolved, store.id);
+
+  const isFiltering = searchParamsResolved.q || (searchParamsResolved.cat && searchParamsResolved.cat !== 'Todas') || searchParamsResolved.min;
 
   return (
     <main className="min-h-screen bg-gray-50 pb-20">
       <header className="bg-white shadow-sm sticky top-0 z-10 px-4 py-4 flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-blue-600">AgroGonzanamá</h1>
+        <h1 className="text-2xl font-bold text-blue-600">
+            {store.nombre} {/* Usamos el nombre real de la tienda */}
+        </h1>
       </header>
 
       {/* Hero y Buscador */}
@@ -110,34 +152,34 @@ export default async function Home({ searchParams }: any) {
                 </div>
                 <div className="p-6 md:p-8 bg-gradient-to-b from-orange-50 to-white">
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-                        {campaign.products.map((product: any) => (
-                            <ProductCard key={product.id} product={product} />
+                {campaign.products.map((product: any) => (
+                            <ProductCard key={product.id} product={product} storeSlug={resolvedParams.slug} />
                         ))}
                     </div>
                 </div>
             </section>
         )}
 
-        {/* Catálogo Estándar (AHORA CON OFERTAS TAMBIÉN) */}
+        {/* Catálogo Estándar */}
         <section>
             <div className="flex justify-between items-end mb-6">
                 <h3 className="text-xl font-bold text-gray-800 border-l-4 border-blue-600 pl-3">
                     {isFiltering ? 'Resultados de búsqueda' : 'Catálogo General'}
                 </h3>
                 {isFiltering && (
-                    <a href="/" className="text-sm text-red-500 hover:underline">Borrar filtros ✖</a>
+                    <a href={`/${resolvedParams.slug}`} className="text-sm text-red-500 hover:underline">Borrar filtros ✖</a>
                 )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
                 {catalogProducts.map((product: any) => (
-                    <ProductCard key={product.id} product={product} />
+                    <ProductCard key={product.id} product={product} storeSlug={resolvedParams.slug} />
                 ))}
             </div>
             
             {catalogProducts.length === 0 && (
                 <div className="text-center py-20 text-gray-500">
-                    No encontramos productos con esos filtros.
+                    No encontramos productos en esta tienda.
                 </div>
             )}
         </section>

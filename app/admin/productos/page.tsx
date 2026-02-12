@@ -13,42 +13,73 @@ export default function ProductsTablePage() {
   const [filterCategory, setFilterCategory] = useState('Todas')
 
   // 1. Cargar productos + Ofertas Activas
+  // 1. Cargar productos + Ofertas Activas
   const fetchProducts = async () => {
-    // A. Pedimos los productos
-    console.log("🟢 PETICIÓN A SUPABASE - Productos")
+    setLoading(true)
+    console.time("⏱️ Products Fetch & Join")
+
+    // A. Obtener usuario y su tienda
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    // Buscamos la tienda del usuario
+    const { data: store } = await supabase
+      .from('stores')
+      .select('id')
+      .eq('owner_id', user.id)
+      .single()
+
+    if (!store) {
+        setLoading(false)
+        console.error("No store found for user")
+        return
+    }
+
+    // B. Pedimos los productos SOLO DE ESTA TIENDA
+    console.log("🟢 PETICIÓN A SUPABASE - Productos de tienda:", store.id)
     const { data: productsData, error } = await supabase
       .from('products')
       .select('*')
+      .eq('store_id', store.id) // <--- FILTRO CLAVE
       .order('created_at', { ascending: false })
     
     if (error) {
         console.error(error)
+        setLoading(false)
         return
     }
 
-    // B. Pedimos las ofertas activas (Cruce de tablas)
-    const { data: offersData } = await supabase
-      .from('campaign_items')
-      .select(`
-        product_id, 
-        precio_oferta,
-        campaigns!inner(activa)
-      `)
-      .eq('campaigns.activa', true) // Solo campañas encendidas
-
-    // C. Mezclamos la información
-    const combinedData = productsData?.map((p: any) => {
-        // Buscamos si este producto tiene una oferta activa
-        const offer = offersData?.find((o: any) => o.product_id === p.id)
+    // C. Pedimos las ofertas activas (Opcional, try-catch por si no existe tabla)
+    let offersData: any[] = []
+    try {
+        const { data, error: campaignError } = await supabase
+        .from('campaign_items')
+        .select(`
+            product_id, 
+            precio_oferta,
+            campaigns!inner(activa)
+        `)
+        .eq('campaigns.activa', true)
         
+        if (!campaignError && data) {
+            offersData = data
+        }
+    } catch (err) {
+        console.warn("Tabla campañas no disponible o error:", err)
+    }
+
+    // D. Mezclamos la información
+    const combinedData = productsData?.map((p: any) => {
+        const offer = offersData?.find((o: any) => o.product_id === p.id)
         return {
             ...p,
-            precio_oferta: offer ? offer.precio_oferta : null, // Precio rebajado
-            en_oferta: !!offer // True si encontramos oferta
+            precio_oferta: offer ? offer.precio_oferta : null,
+            en_oferta: !!offer
         }
     })
     
     setProducts(combinedData as Product[])
+    console.timeEnd("⏱️ Products Fetch & Join")
     setLoading(false)
   }
 
