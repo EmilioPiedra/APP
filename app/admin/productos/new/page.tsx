@@ -14,7 +14,7 @@ export default function NewProductPage() {
   const [descripcion, setDescripcion] = useState('')
   const [categoria, setCategoria] = useState('')
   const [file, setFile] = useState<File | null>(null)
-  const [listaCategorias, setListaCategorias] = useState<any[]>([])
+  
   // 👇 DATOS DE PROMOCIÓN
   const [enOferta, setEnOferta] = useState(false)
   const [precioOferta, setPrecioOferta] = useState('')
@@ -59,7 +59,6 @@ export default function NewProductPage() {
     }
   }
 
-  
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-lg border border-gray-100">
@@ -96,17 +95,47 @@ export default function NewProductPage() {
               <datalist id="cats"><option value="Herramientas"/><option value="Semillas"/><option value="Fertilizantes"/></datalist>
             </div>
           </div>
-          {/* Descripción e Imagen (Igual que antes) */}
+
+          {/* Descripción */}
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-1">Descripción</label>
             <textarea required rows={3} className="w-full border p-3 rounded-lg"
               value={descripcion} onChange={e => setDescripcion(e.target.value)} />
           </div>
 
+          {/* Foto */}
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-1">Foto</label>
             <input required type="file" accept="image/*" className="w-full border p-2 rounded-lg bg-gray-50"
               onChange={e => setFile(e.target.files?.[0] || null)} />
+          </div>
+
+          {/* SECCIÓN DE OFERTA (Implementada) */}
+          <div className="bg-orange-50 p-4 rounded-lg border border-orange-100">
+            <label className="flex items-center gap-2 font-bold text-orange-800 mb-2 cursor-pointer select-none">
+              <input 
+                type="checkbox" 
+                className="w-5 h-5 accent-orange-600"
+                checked={enOferta}
+                onChange={e => setEnOferta(e.target.checked)}
+              />
+              ¿Este producto está en oferta?
+            </label>
+            
+            {enOferta && (
+              <div className="mt-2 animate-in fade-in slide-in-from-top-2">
+                <label className="block text-sm font-bold text-gray-700 mb-1">Precio de Oferta ($)</label>
+                <input 
+                  required={enOferta}
+                  type="number" 
+                  step="0.01" 
+                  className="w-full border border-orange-300 p-3 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
+                  value={precioOferta} 
+                  onChange={e => setPrecioOferta(e.target.value)} 
+                  placeholder="0.00" 
+                />
+              </div>
+            )}
           </div>
 
           <button type="submit" disabled={loading}

@@ -1,15 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: 'standalone', // Vital para tu servidor
+  output: 'standalone', // Vital para tu servidor en Docker/VPS
 
-  // 👇 ESTOS DOS BLOQUES SON LA CLAVE PARA QUE NO FALLE EL BUILD
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
+  // Se eliminaron las opciones de 'ignore' para mayor seguridad.
+  // Si tienes errores de TypeScript, es mejor arreglarlos antes de subir.
 
   images: {
     remotePatterns: [
@@ -18,7 +13,8 @@ const nextConfig: NextConfig = {
         hostname: '**.supabase.co',
       },
     ],
-    unoptimized: true,
+    // 'unoptimized: true' es necesario si no usas el optimizador de imágenes de Vercel pagado
+    unoptimized: true, 
   },
 };
 

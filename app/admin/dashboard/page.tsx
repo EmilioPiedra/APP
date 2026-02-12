@@ -3,12 +3,22 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import Link from 'next/link'
 
-// Definimos los tipos aquí mismo para evitar errores de importación
+// Definición de tipos para seguridad
+interface StatItem {
+  term: string
+  count: number
+}
+
+interface ProductStat {
+  name: string
+  count: number
+}
+
 interface DashboardStats {
   totalProducts: number
   totalInteractions: number
-  topSearches: { term: string; count: number }[]
-  topProducts: { name: string; count: number }[]
+  topSearches: StatItem[]
+  topProducts: ProductStat[]
 }
 
 export default function MetricsPage() {
@@ -21,70 +31,71 @@ export default function MetricsPage() {
   })
 
   useEffect(() => {
-    async function loadStats() {
-      // 1. Cargar Productos (solo necesitamos ID y nombre)
+    // Definimos la función DENTRO del efecto para encapsularla y evitar bucles
+    const loadStats = async () => {
+      console.log("⚡ FETCHING STATS...") // Chivato de seguridad: Debe salir 1 vez
+
+      // A. Cargar Productos (Solo necesitamos ID y nombre)
       const { data: products } = await supabase.from('products').select('id, nombre')
       
-      // 2. Cargar Eventos (Search y Clicks)
+      // B. Cargar Eventos (Últimos 2000)
       const { data: events } = await supabase
         .from('events')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(2000) // Analizamos los últimos 2000 eventos
+        .limit(2000)
 
       if (products && events) {
-        processStats(products, events)
+        // --- LÓGICA DE PROCESAMIENTO ---
+        const searchMap: Record<string, number> = {}
+        const clickMap: Record<string, number> = {}
+
+        events.forEach(e => {
+          // Contar Búsquedas
+          if (e.type === 'search' && e.query) {
+            const term = e.query.toLowerCase().trim()
+            searchMap[term] = (searchMap[term] || 0) + 1
+          }
+          // Contar Clics
+          if (e.type === 'click' && e.product_id) {
+            clickMap[e.product_id] = (clickMap[e.product_id] || 0) + 1
+          }
+        })
+
+        // Ordenar y cortar top 5 búsquedas
+        const topSearches = Object.entries(searchMap)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 5)
+          .map(([term, count]) => ({ term, count }))
+
+        // Ordenar y cortar top 5 productos
+        const topProducts = Object.entries(clickMap)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 5)
+          .map(([id, count]) => {
+            const p = products.find(prod => prod.id === id)
+            return { name: p ? p.nombre : 'Producto Eliminado', count }
+          })
+
+        // Guardar todo en el estado de una sola vez
+        setStats({
+          totalProducts: products.length,
+          totalInteractions: events.length,
+          topSearches,
+          topProducts
+        })
       }
       setLoading(false)
     }
+
     loadStats()
-  }, [])
+  }, []) // <--- IMPORTANTE: Corchetes vacíos = Ejecutar solo 1 vez
 
-  const processStats = (products: any[], events: any[]) => {
-    // A. Top Búsquedas
-    const searchMap: Record<string, number> = {}
-    events
-      .filter(e => e.type === 'search' && e.query)
-      .forEach(e => {
-        // Normalizamos: "Machete" es igual a "machete "
-        const term = e.query.toLowerCase().trim()
-        searchMap[term] = (searchMap[term] || 0) + 1
-      })
-    
-    // B. Top Productos (Clics)
-    const clickMap: Record<string, number> = {}
-    events
-      .filter(e => e.type === 'click' && e.product_id)
-      .forEach(e => {
-        clickMap[e.product_id] = (clickMap[e.product_id] || 0) + 1
-      })
-
-    // Convertir mapas a arrays ordenados
-    const topSearches = Object.entries(searchMap)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5)
-      .map(([term, count]) => ({ term, count }))
-
-    const topProducts = Object.entries(clickMap)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 5)
-      .map(([id, count]) => {
-        const p = products.find(prod => prod.id === id)
-        return { name: p ? p.nombre : 'Producto Eliminado', count }
-      })
-
-    setStats({
-      totalProducts: products?.length || 0,
-      totalInteractions: events?.length || 0,
-      topSearches,
-      topProducts
-    })
-  }
-
+  // --- RENDERIZADO (HTML) ---
   return (
     <div className="min-h-screen bg-gray-50 p-6 md:p-10">
       <div className="max-w-6xl mx-auto">
-        {/* Encabezado con botón de volver */}
+        {/* Encabezado */}
         <div className="flex items-center gap-4 mb-8">
           <Link href="/admin" className="p-2 bg-white rounded-lg border hover:bg-gray-100 transition-colors">
             ← Volver
@@ -121,7 +132,7 @@ export default function MetricsPage() {
 
               {/* Lo más visto */}
               <div className="bg-white p-6 rounded-xl shadow-sm border">
-                <h3 className="font-bold text-lg mb-4 text-gray-700">⭐ Productos Estrella (Clicks)</h3>
+                <h3 className="font-bold text-lg mb-4 text-gray-700">⭐ Productos Estrella</h3>
                 {stats.topProducts.length === 0 ? <p className="text-sm text-gray-400">Sin datos aún.</p> : (
                   <div className="space-y-3">
                     {stats.topProducts.map((p, i) => (
@@ -139,19 +150,25 @@ export default function MetricsPage() {
   )
 }
 
-// Componentes visuales simples
-function StatCard({ title, value, color }: any) {
-  const colors: any = { blue: 'text-blue-600', purple: 'text-purple-600', orange: 'text-orange-600', green: 'text-emerald-600' }
+// --- SUB-COMPONENTES VISUALES ---
+function StatCard({ title, value, color }: { title: string, value: number, color: string }) {
+  const colors: Record<string, string> = { 
+    blue: 'text-blue-600', 
+    purple: 'text-purple-600', 
+    orange: 'text-orange-600', 
+    green: 'text-emerald-600' 
+  }
   return (
     <div className="bg-white p-4 rounded-xl shadow-sm border text-center">
-      <div className={`text-3xl font-bold ${colors[color]}`}>{value}</div>
+      <div className={`text-3xl font-bold ${colors[color] || 'text-gray-800'}`}>{value}</div>
       <div className="text-xs text-gray-500 font-bold uppercase mt-1">{title}</div>
     </div>
   )
 }
 
-function Barra({ label, count, max, color }: any) {
-  const percent = Math.max((count / max) * 100, 10)
+function Barra({ label, count, max, color }: { label: string, count: number, max: number, color: string }) {
+  // Aseguramos que la barra tenga al menos un 5% de ancho para que se vea
+  const percent = max > 0 ? (count / max) * 100 : 0
   return (
     <div>
       <div className="flex justify-between text-xs mb-1">
@@ -159,7 +176,7 @@ function Barra({ label, count, max, color }: any) {
         <span className="font-bold">{count}</span>
       </div>
       <div className="w-full bg-gray-100 rounded-full h-2">
-        <div className={`h-2 rounded-full ${color}`} style={{ width: `${percent}%` }}></div>
+        <div className={`h-2 rounded-full ${color}`} style={{ width: `${Math.max(percent, 5)}%` }}></div>
       </div>
     </div>
   )

@@ -15,6 +15,7 @@ export default function ProductsTablePage() {
   // 1. Cargar productos + Ofertas Activas
   const fetchProducts = async () => {
     // A. Pedimos los productos
+    console.log("🟢 PETICIÓN A SUPABASE - Productos")
     const { data: productsData, error } = await supabase
       .from('products')
       .select('*')
